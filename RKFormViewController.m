@@ -11,6 +11,7 @@
 
 #define RKControlKey @"control"
 #define RKControlInputTypeKey @"inputType"
+#define TOP_MARGIN_PADDING 50
 
 @interface RKFormViewController () <UITextFieldDelegate, UITextViewDelegate, RKToolBarDelegate>
 
@@ -18,6 +19,11 @@
 @property (nonatomic, assign) int currentControlIndex;
 @property (nonatomic, strong) NSMutableArray *arrayOfControls;
 @property (nonatomic, strong) UIDatePicker *datePicker;
+@property (nonatomic, assign) float keyboardHeight;
+@property (nonatomic, assign) float keyboardAnimationDuration;
+@property (nonatomic, assign) UIViewAnimationCurve keyboardAnimationCurve;
+@property (nonatomic, assign) float bottomOffsetToKeyboard;
+@property (nonatomic, weak) IBOutlet UIScrollView *contentScroll;
 
 @end
 
@@ -26,7 +32,10 @@
 - (void)viewDidLoad {
 
     _arrayOfControls = [[NSMutableArray alloc]init];
+    [_contentScroll setContentSize:CGSizeMake(self.view.frame.size.width, self.view.frame.size.height)];
     [self initializeToolbar];
+    [self registerForKeyboardNotifications];
+    _bottomOffsetToKeyboard = 100;
     [super viewDidLoad];
     // Do any additional setup after loading the view.
 }
@@ -124,7 +133,6 @@
 }
 
 
-
 #pragma mark - Toolbar Delegate Methods
 - (void)doneTapped:(id)sender {
     
@@ -167,7 +175,6 @@
 }
 
 - (void)controlWillBecomeFirstResponder:(id)control {
-
     id _currentControl = _arrayOfControls[_currentControlIndex][RKControlKey];
     if (_currentControl == control) {
         return;
@@ -187,6 +194,7 @@
 }
 
 - (void)setNextPreviousButtonState {
+    
     [_keyboadToolBar enableNextButton];
     [_keyboadToolBar enablePreviousButton];
     if (_currentControlIndex == (_arrayOfControls.count-1)) {
@@ -194,6 +202,84 @@
     }
     if (_currentControlIndex == 0) {
         [_keyboadToolBar disablePreviousButton];
+    }
+}
+
+
+#pragma mark - View Adjustment
+- (void)adjustViewFrameForControl:(id)control {
+
+    CGRect contentRect = _contentScroll.frame;
+    contentRect.size.height = self.view.frame.size.height - _keyboardHeight;
+    _contentScroll.frame = contentRect;
+    
+    float adjustmentHeight = [self getHeightAdjustmentValueForControl:(UIView *)control];
+    if (adjustmentHeight == _contentScroll.contentOffset.y) {
+        return;
+    }
+    [_contentScroll setContentOffset:CGPointMake(_contentScroll.contentOffset.x, adjustmentHeight)
+                            animated:NO];
+    
+}
+
+- (void)setViewFrameToDefault {
+    
+    [_contentScroll setContentOffset:CGPointMake(0,0)
+                            animated:NO];
+    
+    CGRect contentRect = _contentScroll.frame;
+    contentRect.size.height = self.view.frame.size.height;
+    _contentScroll.frame = contentRect;
+}
+
+- (void)registerForKeyboardNotifications
+{
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillShow:)
+                                                 name:UIKeyboardWillShowNotification object:nil];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardWillHide:)
+                                                 name:UIKeyboardWillHideNotification object:nil];
+    
+}
+
+-(void)unregisterForKeyboardNotifications
+{
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillShowNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIKeyboardWillHideNotification
+                                                  object:nil];
+}
+
+- (void)keyboardWillShow:(NSNotification *)notification {
+    
+    NSDictionary *userInfo = [notification userInfo];
+    CGRect keyboardFrame;
+    [[userInfo objectForKey:UIKeyboardFrameEndUserInfoKey] getValue:&keyboardFrame];
+    _keyboardHeight = keyboardFrame.size.height;
+    _keyboardAnimationDuration = [[userInfo objectForKey:UIKeyboardAnimationDurationUserInfoKey] floatValue];
+    _keyboardAnimationCurve = [[userInfo objectForKey:UIKeyboardAnimationCurveUserInfoKey] floatValue];
+    
+    id _currentControl = _arrayOfControls[_currentControlIndex][RKControlKey];
+    [self adjustViewFrameForControl:_currentControl];
+}
+
+- (void)keyboardWillHide:(NSNotification *)notification {
+    [self setViewFrameToDefault];
+}
+
+- (float)getHeightAdjustmentValueForControl:(UIView *)control {
+
+    float keyboardLimit = self.view.frame.size.height - _keyboardHeight;
+    float controlBottomEdge = control.frame.origin.y + control.frame.size.height;
+    float allowedLimit = keyboardLimit - _bottomOffsetToKeyboard;
+    if (controlBottomEdge >= allowedLimit) {
+        return MAX((controlBottomEdge - allowedLimit),30);
+    } else {
+        return 0;
     }
 }
 
